@@ -1,0 +1,19 @@
+#####################################################################################
+## ISCTE-IUL: Trabalho prático de Sistemas Operativos 2024/2025, Enunciado Versão 1
+##
+## Aluno: Nº:129850 Nome:Gonçalo Sobral
+## Nome do Módulo: S2.3 cron.def
+## Descrição/Explicação do Módulo: Automatizar a execução do script de manutenção do sistema Park-IUL
+## Primeira execução às 5:59 da manhã (59 5 * * 1-5) nos dias úteis (segunda a sexta)
+## Segunda execução às 13:01 (1 13 * * 1-5) nos dias úteis (segunda a sexta)
+
+## Explicação de quais os comandos a usar para configurar o seu sistema Linux
+## usando este ficheiro: 1 - Abrir o editor crontab usando o comando: crontab -e
+## 2 - Copiar as duas linhas para o editor
+## 3 - Salvar e fechar o editor
+##
+## 
+##
+#####################################################################################
+59 5 * * 1-5 cd /home/a129850/trabalho_p1/parte-1 && ./manutencao.sh
+1 13 * * 1-5 cd /home/a129850/trabalho_p1/parte-1 && ./manutencao.sh
