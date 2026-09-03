@@ -55,10 +55,65 @@ files, plus reporting and scheduled maintenance.
 <Matrícula>:<País>:<Categoria>:<Condutor>:<DataEntrada>:<DataSaída>:<TempoParkMinutos>
 ```
 
+**Input files (not included - you must create these):**
+
+`paises.txt` - one country per line, `###`-separated, mapping a 2-letter code to a
+display name and a regex describing valid plates for that country:
+```
+<Código>###<Nome do País>###<Regex da Matrícula>
+PT###Portugal###^[0-9]{2}-[0-9]{2}-[A-Z]{2}$
+ES###Espanha###^[0-9]{4}-[A-Z]{3}$
+UK###Reino Unido###^[A-Z]{2}[0-9]{2}[A-Z]{3}$
+```
+
+A user database (`FILE_USERS`, e.g. `/etc/passwd` or a local copy) is also required
+for driver-name validation, in the standard `/etc/passwd` layout
+(`login:x:uid:gid:Full Name:home:shell`) - the driver's full name is matched against
+the GECOS (5th) field.
+
 **Run it:**
 ```bash
 cd parte1-shell
 ./menu.sh
+```
+
+**Example session:**
+```
+$ ./menu.sh
+Menu:
+1: Regista passagem - Entrada Estacionamento
+2: Regista passagem - Saída Estacionamento
+3: Manutenção
+4: Estatísticas:
+0: Sair
+Opção: 1
+Regista passagem de Entrada estacionamento:
+Indique a matrícula da viatura: 12-34-AB
+Indique o código do país de origem da viatura: PT
+Indique a categoria da viatura [L(igeiro)|P(esado)|M(otociclo)]: L
+Indique o nome do condutor da viatura: Gonçalo Sobral
+[so_success] S1.1 Argumentos validados
+[so_success] S1.2 Validação concluída
+[so_success] S1.3 Registo feito com sucesso
+[so_success] S1.4 Ordem por hora alterada
+[so_success] S4.3 Passagem da entrada registada
+Opção: 0
+A sair ...
+```
+
+**Suggested `.gitignore`** (generated/runtime files that shouldn't be committed):
+```gitignore
+# Part 1 - generated data & reports
+estacionamentos.txt
+estacionamentos-ordenados-hora.txt
+arquivo-*.park
+stats.html
+
+# Parts 2 & 3 - compiled binaries
+servidor
+cliente
+*.o
+*.fifo
 ```
 
 ---
@@ -89,6 +144,26 @@ Communication flow:
 
 Key structures (`common.h`): `Viatura`, `Estacionamento`, `LogItem`.
 
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant S as Servidor
+    participant D as Servidor Dedicado
+
+    S->>S: creates FIFO (server.fifo) + in-memory DB
+    C->>C: validates FIFO exists, arms SIGUSR1/SIGHUP/SIGINT/SIGALRM
+    C->>S: writes Estacionamento struct to FIFO
+    S->>S: finds & reserves a free spot in the DB
+    S->>D: fork() a dedicated server for this client
+    D->>D: validates client PID + vehicle data
+    D-->>C: SIGUSR1 (check-in accepted, carries D's PID)
+    Note over C: alarm() cancelled, waits for "sair"
+    C->>D: SIGUSR1 (checkout request, Ctrl+C or "sair")
+    D->>D: logs exit, frees spot
+    D-->>C: SIGHUP (terminate)
+    C->>C: exits
+```
+
 **Build & run:**
 ```bash
 cd parte2-processos-sinais
@@ -97,6 +172,25 @@ gcc -o cliente cliente.c -Wall
 
 ./servidor <parking_capacity>   # in one terminal
 ./cliente                       # in another terminal (repeat for more clients)
+```
+
+**Example session:**
+```
+# Terminal 1
+$ ./servidor 5
+[so_success] S1.4 FIFO do servidor criado com sucesso
+[so_success] S2.1 A aguardar pedidos...
+
+# Terminal 2
+$ ./cliente
+[so_success] C1.1 FIFO do servidor validado com sucesso
+Introduza a matrícula do veículo: 12-34-AB
+Introduza o país (código de 2 letras): PT
+Introduza a categoria do veículo (um caractere): L
+Introduza o nome do condutor: Gonçalo Sobral
+[so_success] C4.1 Check-in realizado com sucesso
+Digite 'sair' para terminar o estacionamento: sair
+[so_success] C5.2 Terminou
 ```
 
 ---
@@ -136,6 +230,29 @@ Message status codes (`common.h`): `CLIENT_ACCEPTED`, `ESTACIONAMENTO_TERMINADO`
 IPC resources are released cleanly by the server on shutdown
 (`s4_3_ApagaElementosIPCeTermina`).
 
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant S as Servidor
+    participant D as Servidor Dedicado
+    participant F as FACE (external)
+
+    S->>S: creates msg queue, semaphore set, shared-memory DB
+    C->>S: msgsnd MSGTYPE_LOGIN (vehicle data)
+    S->>D: fork() a dedicated server for this client
+    D->>F: shmat() to read tarifaAtual
+    D->>D: validates data, reserves spot (semaphore)
+    D-->>C: msgsnd type=PID, status=CLIENT_ACCEPTED
+    loop while parked
+        D-->>C: msgsnd type=PID, status=INFO_TARIFA
+    end
+    C->>D: msgsnd type=D's PID, status=TERMINA_ESTACIONAMENTO (Ctrl+C)
+    D->>D: logs exit, releases spot (semaphore)
+    D-->>C: msgsnd type=PID, status=ESTACIONAMENTO_TERMINADO
+    C->>C: exits
+    D->>D: exits
+```
+
 **Build & run:**
 ```bash
 cd parte3-ipc
@@ -144,6 +261,29 @@ gcc -o cliente cliente.c -Wall
 
 ./servidor <parking_capacity>   # in one terminal
 ./cliente                       # in another terminal (repeat for more clients)
+```
+
+**Example session:**
+```
+# Terminal 1
+$ ./servidor 5
+[so_success] S1.3 Message Queue criada com sucesso
+[so_success] S1.4 Grupo de semáforos criado com sucesso
+[so_success] S1.5 BD do parque criada em memória partilhada
+[so_success] S2 A aguardar pedidos...
+
+# Terminal 2
+$ ./cliente
+Park-IUL: Check-in Viatura
+----------------------------
+Introduza a matrícula da viatura: 12-34-AB
+Introduza o país da viatura: PT
+Introduza a categoria da viatura: L
+Introduza o nome do condutor: Gonçalo Sobral
+[so_success] C4.1 Check-in realizado com sucesso
+[so_success] C5 Tarifa atual: 0.75 €/hora
+^C
+[so_success] C6 Cliente: Shutdown
 ```
 
 ---
