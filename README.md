@@ -307,9 +307,9 @@ All three parts depend on `so_utils`, a helper library provided by the course th
 This header/script provides the `so_success`, `so_error`, `so_debug`, and `so_gets`
 macros used throughout every file. Without access to `/home/so/utils/` (i.e. without
 being on the ISCTE server, or without a local copy of `so_utils.h`/`so_utils.sh`), the
-code will not compile or run - there is no bundled fallback implementation.
+code will not compile or run.
 
-Two additional, environment-specific dependencies to be aware of:
+There are also two other things that only work as expected on the ISCTE server:
 
 - **Driver-name validation** (`regista_passagem.sh`, and `sd8_4_ValidaNomeCondutor` in
   both `parte2-processos-sinais` and `parte3-ipc`) checks the driver's name against
